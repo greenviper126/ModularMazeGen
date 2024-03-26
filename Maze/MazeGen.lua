@@ -2,8 +2,6 @@
 
 --[==[
 Creator: Viper
-
-Creates a maze based on layout data
 ]==]
 
 
@@ -20,57 +18,57 @@ type mazeSettings<N, V> = {
 	
 	rndRemove:N,
 	objectChance:N
-}
+} --used for options the player can provide and for default settings
 
 type layout<T, V> = {
-	pillars:T,
-	cells:T,
-	cols:T,
-	rows:T,
-	once:T,
+	pillars:T, --functions that you want to run per pillar, they are the intersection between a col and row
+	cells:T, --functions that you want to run per cell
+	cols:T, --functions that you want to run per col
+	rows:T, --functions that you want to run per row
+	once:T, --functions that you want to run once
 
-	objects:V
-}
+	objects:V --objects refers to instances placed in the maze, like a table or drawer
+} --used for layout data and storing it in memeory
 
 type instMem = {[number]:{Instance}}
 
-type objectMem = {[number]:{[number]:{[string]:Instance}}}
+type objectMem = {[number]:{[number]:{[string]:Instance}}} --stores the instances based on the cell and direction they are at
 
 type memory = layout<instMem, objectMem>&{
-	positions:{Vector2},
-	solution:{Vector2},
-	visited:{boolean},
+	positions:{Vector2}, --the positions the algorithm took to get there
+	solution:{Vector2}, --cell positions to solve the maze, currently does not provide solution
+	visited:{boolean}, --used by pathing algorithm to check if its been in a certain cell before
 
-	openDirections:{[number]:{boolean}}
+	openDirections:{[number]:{boolean}} --directions that have no walls are true
 }
 
 type self = {
-	_settings:mazeSettings<number, Vector3> & {
-		pillarOffset:Vector3,
-		widthOffset:Vector3,
-		totalLength:Vector3,
+	_settings:mazeSettings<number, Vector3> & { --combine settings table with extra data that doesnt need to be provided
+		pillarOffset:Vector3, --used by segment functions
+		widthOffset:Vector3, --used by segment functions
+		totalLength:Vector3, --used by segment functions
 	},
 
-	_mazeParts:Folder,
-	_memory:memory,
-	_layout:instLayout,
-	_id:number
+	_mazeParts:Folder, --were all instances are stored in workspace
+	_memory:memory, --instances and variables used for creating and cleaning up maze
+	_layout:instLayout, -- the provided layout data
+	_id:number --number to distinguish between mazes
 }
 
 
-export type segment = (self:Maze, x:number, y:number, direction:number?) -> ({}, Instance)
+export type segment = (self:Maze, x:number, y:number, direction:number?) -> ({}, Instance) --function that places a part in the maze based on given information
 
-export type instLayout = layout<{segment}, {segment}>
+export type instLayout = layout<{segment}, {segment}> --layout that needs to be provided to create the maze
 
-export type Settings = mazeSettings<number?, Vector3?>
+export type Settings = mazeSettings<number?, Vector3?> --optional values to provide to the maze
 
 
 
 --LOCAL_FUNCTIONS/VARIABLES------------------------------------------------------------------------
 
-local MazeID = 1
+local MazeID = 1 --used for _id in self
 
-local function flattenTable(inputTable:{})
+local function flattenTable(inputTable:{}) --removes tables inside the provided table and moves there data to it
 	local function recursiveFlatten(input:{}, output:{})
 		for _, v in pairs(input) do
 			if type(v) == "table" then
@@ -87,8 +85,8 @@ local function flattenTable(inputTable:{})
 end
 
 local function iter<T>(tbl:{T}, method:(func:T)->())
-	for _, func in pairs(tbl) do
-		method(func)
+	for _, func in pairs(tbl) do --iterates through a table of functions
+		method(func) --gives function as first parameter to provided function
 	end
 end
 
@@ -99,7 +97,7 @@ end
 local Maze = {}
 Maze.__index = Maze
 
-Maze._default = {
+Maze._default = { --default variables if not provided from settings
 	cols = 10,
 	rows = 10,
 	height = 12,
@@ -113,7 +111,7 @@ Maze._default = {
 
 
 
-export type Maze = typeof(setmetatable({} :: self, Maze))
+export type Maze = typeof(setmetatable({} :: self, Maze)) --creates Maze type for typechecking
 
 
 
@@ -123,11 +121,11 @@ CONSTUCTOR
 configures settings and creates folder to store the maze in workspace
 ]==]
 function Maze.new(set:Settings?):Maze
-	local set:Settings = set or {}
+	local set:Settings = set or {} --table doesnt need to be provided
 	local self = setmetatable({}::self, Maze)
 	
-	self._id = MazeID
-	MazeID += 1
+	self._id = MazeID --set _id
+	MazeID += 1 --new number for next maze object
 	
 	self._settings = {
 		cols = set.cols or Maze._default.cols,
@@ -172,14 +170,14 @@ end
 Should be set first, resets memory so a maze can be created.
 ]==]
 function Maze._init(self:Maze, layout:instLayout)
-	if self._memory then--clean table
+	if self._memory then --clean table of instances if any
 		for _, inst in pairs(flattenTable(self._memory)) do
 			if typeof(inst) ~= "Instance" then continue end
 			inst:Destroy()
 		end
 	end
 	
-	self._layout = layout
+	self._layout = layout --set layout data from provide table
 	
 	self._memory = {
 		pillars = {},
@@ -227,7 +225,7 @@ function Maze._init(self:Maze, layout:instLayout)
 	
 	--reset tables
 	for cord=1, self:_cord(self._settings.rows+1, self._settings.cols+1) do
-		setvalue(cord)
+		setvalue(cord) --inserts all the needed tables and values for each cell into memory
 	end
 	self._memory.positions[1] = Vector2.new(1,1)--set first position
 	self._memory.visited[1] = true--set first position to be visited
@@ -319,7 +317,7 @@ end
 --[==[
 GRID_HANDELING
 
-Methods for creating the maze grid and storing data
+Methods for creating the maze grid
 ]==]
 
 --[[
@@ -458,12 +456,15 @@ end
 
 --[[
 Removes walls randomly, should run after path algorithm
+
+makes the maze look a bit more random
+turns it into a non perfect maze meaning there is multiple solutions to solve it
 ]]
 function Maze._randomRemoveWalls(self:Maze)
 	local function rnd(x:number, y:number, directions:{number})
 		for _, direction in pairs(directions) do
 			if math.random(0, 99) >= self._settings.rndRemove then continue end
-			self:_addDirection(x, y, direction)
+			self:_addDirection(x, y, direction) --removes wall and updates data
 		end
 	end
 	
@@ -487,7 +488,7 @@ Finds cells from current position that the algorithm hasnt visited yet
 ]]
 function Maze._visitableCells(self:Maze, x:number, y:number, noVisit:boolean?):{number}
 	local cord = self:_cord(x, y)
-	local directions = {}
+	local directions = {} --all possible directions the algorithm can go to next
 	
 	--north
 	if cord+self._settings.rows <= self._settings.rows*self._settings.cols and (noVisit or not self._memory.visited[cord+self._settings.rows]) then
@@ -517,13 +518,13 @@ function Maze._openCell(self:Maze, cord1:number, cord2:number)
 	local cell1 = self._memory.openDirections[cord1]
 	local cell2 = self._memory.openDirections[cord2]
 	
-	if direction == -self._settings.rows then--north
+	if direction == -self._settings.rows then --north
 		cell1[1] = true; cell2[3] = true
-	elseif direction == 1 then--east
+	elseif direction == 1 then --east
 		cell1[2] = true; cell2[4] = true
-	elseif direction == self._settings.rows then--south
+	elseif direction == self._settings.rows then --south
 		cell1[3] = true; cell2[1] = true
-	elseif direction == -1 then--west
+	elseif direction == -1 then --west
 		cell1[4] = true; cell2[2] = true
 	end
 	self._memory.visited[cord2] = true
@@ -560,19 +561,19 @@ Remove wall and update data for algorithm
 function Maze._addDirection(self:Maze, x:number, y:number, direction:number)
 	local cord = self:_cord(x, y)
 	
-	if direction == 1 then--north
+	if direction == 1 then --north
 		self:_openCell(cord, cord+self._settings.rows)
 		self:_removeCellInstance(self._memory.rows, cord+self._settings.rows)
 		table.insert(self._memory.positions,Vector2.new(x, y+1))
-	elseif direction == 2 then--east
+	elseif direction == 2 then --east
 		self:_openCell(cord, cord-1)
 		self:_removeCellInstance(self._memory.cols, cord)
 		table.insert(self._memory.positions,Vector2.new(x-1, y))
-	elseif direction == 3 then--south
+	elseif direction == 3 then --south
 		self:_openCell(cord, cord-self._settings.rows)
 		self:_removeCellInstance(self._memory.rows, cord)
 		table.insert(self._memory.positions,Vector2.new(x, y-1))
-	elseif direction == 4 then--west
+	elseif direction == 4 then --west
 		self:_openCell(cord, cord+1)
 		self:_removeCellInstance(self._memory.cols, cord+1)
 		table.insert(self._memory.positions,Vector2.new(x+1, y))
@@ -589,17 +590,15 @@ function Maze._createPath(self:Maze)
 		local directions = self:_visitableCells(x, y)
 		local cord = self:_cord(x, y)
 		
-		if #directions > 0 then--found direction
+		if #directions > 0 then --found direction
 			local nextCellDir = directions[math.random(1, #directions)]
 			self:_addDirection(x, y, nextCellDir)
-		else--no new directions
-
-			--backtrack
-			table.remove(self._memory.positions)
+		else --no new directions
+			table.remove(self._memory.positions) --backtrack
 		end
 	end
 	
-	repeat--regular function recusion is to slow
+	repeat --regular function recusion is to slow
 		recursiveBacktrack()
 	until
 	self._memory.positions == nil or table.maxn(self._memory.positions) == 0
@@ -613,7 +612,7 @@ CLEANUP
 function Maze.Destroy(self:Maze)
 	for _, value in pairs(flattenTable(self._memory)) do
 		if typeof(value) == "Instance" then
-			value:Destroy()
+			value:Destroy() --remove all instances of the maze
 		end
 	end
 	self = nil::any
