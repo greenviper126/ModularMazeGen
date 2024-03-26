@@ -27,7 +27,7 @@ type layout<T, V> = {
 	rows:T, --functions that you want to run per row
 	once:T, --functions that you want to run once
 
-	objects:V --objects refers to instances placed in the maze, like a table or drawer
+	objects:V --functions that run per cell and per direction, used for instances like a table or drawer
 } --used for layout data and storing it in memeory
 
 type instMem = {[number]:{Instance}}
