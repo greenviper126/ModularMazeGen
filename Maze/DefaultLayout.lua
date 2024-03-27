@@ -3,7 +3,7 @@
 local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 
-local MazeGen = require(ServerStorage.Maze:WaitForChild("MazeGen"))
+local MazeGen = require(ServerStorage.Maze.MazeGen)
 
 
 
